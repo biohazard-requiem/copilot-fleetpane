@@ -1,0 +1,26 @@
+{
+  "asked": "2026-11-25T04:52:18.122Z",
+  "why": "session.background_tasks_changed",
+  "tasks": [
+    {
+      "type": "agent",
+      "id": "67b4db1e-c950-4c98-85d1-41e2678f1a80",
+      "toolCallId": "toolu_01Vj3ZUxLrKT5PFzigncPR46",
+      "displayName": "agent-a",
+      "status": "running",
+      "executionMode": "background",
+      "agentType": "explore",
+      "startedAt": "2026-11-25T04:52:13.097Z"
+    },
+    {
+      "type": "agent",
+      "id": "d70f5d83-4b03-47a5-aa42-fa11ed26ebb9",
+      "toolCallId": "toolu_01Dv7vLLAuzjiWdi19ULfDzM",
+      "displayName": "agent-b",
+      "status": "running",
+      "executionMode": "background",
+      "agentType": "explore",
+      "startedAt": "2026-11-25T04:52:13.097Z"
+    }
+  ]
+}

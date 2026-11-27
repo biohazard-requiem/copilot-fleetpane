@@ -213,17 +213,32 @@ test("hack/uninstall.sh removes the extension and sweeps the runtime dir by the 
     assert.deepEqual(fs.readdirSync(dir).sort(), [...kept, ...foreign].sort());
 });
 
+const repo = fileURLToPath(new URL("../..", import.meta.url));
+
 // Runs a script of hack/ with the Copilot home ("home", next to the runtime dir) and the runtime
 // dir of the test, never the user's. /bin/bash is the oldest bash the scripts have to work with:
 // 3.2 on macOS.
-function hack(name, dir, { env = {}, cwd } = {}) {
-    const script = fileURLToPath(new URL(`../../hack/${name}`, import.meta.url));
+function hack(name, dir, { env = {}, cwd, root = repo } = {}) {
+    const script = path.join(root, "hack", name);
     const home = path.join(path.dirname(dir), "home");
     return spawnSync("/bin/bash", [script], {
         env: { ...process.env, COPILOT_HOME: home, FLEETPANE_RUNTIME_DIR: dir, ...env },
         cwd,
         encoding: "utf8",
     });
+}
+
+// hack/install.sh installs from the directory above its own, and bin/ there is build output that
+// a fresh clone does not have. So the tests run a copy of the script from "src", next to the
+// runtime dir, with a copy of extension/ and a stub in place of bin/fleetpane.
+function install(dir) {
+    const root = path.join(path.dirname(dir), "src");
+    fs.mkdirSync(path.join(root, "hack"), { recursive: true });
+    fs.copyFileSync(path.join(repo, "hack", "install.sh"), path.join(root, "hack", "install.sh"));
+    fs.cpSync(path.join(repo, "extension"), path.join(root, "extension"), { recursive: true });
+    fs.mkdirSync(path.join(root, "bin"));
+    fs.writeFileSync(path.join(root, "bin", "fleetpane"), "#!/bin/sh\n", { mode: 0o755 });
+    return hack("install.sh", dir, { root });
 }
 
 const destOf = (dir) => path.join(path.dirname(dir), "home", "extensions", "fleetpane");
@@ -296,7 +311,7 @@ test("hack/install.sh when the destination, or its lib, bin or themes, is a syml
         fs.mkdirSync(path.dirname(link), { recursive: true });
         fs.symlinkSync(elsewhere, link);
 
-        const out = hack("install.sh", dir);
+        const out = install(dir);
 
         assert.notEqual(out.status, 0, `"${sub}": ${out.stdout}`);
         assert.ok(out.stderr.startsWith("install: ") && out.stderr.includes(link), out.stderr);
@@ -318,7 +333,7 @@ test("hack/install.sh over files that are symlinks (to a file, to a directory): 
     fs.symlinkSync(otherFile, path.join(dest, "lib", "config.mjs"));
     fs.symlinkSync(otherDir, path.join(dest, "ghostty-split.applescript"));
 
-    const out = hack("install.sh", dir);
+    const out = install(dir);
 
     assert.equal(fs.readFileSync(otherFile, "utf8"), "not FleetPane's");
     assert.deepEqual(fs.readdirSync(otherDir), []);

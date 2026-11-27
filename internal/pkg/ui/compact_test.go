@@ -422,3 +422,23 @@ func TestCompactWaitingEmphasis(t *testing.T) {
 		})
 	}
 }
+
+// The compact pages have no box to put their text on: all the rows above the
+// key hints are one panel, so that no text lies on the bare gradient or on
+// the palms.
+func TestCompactBodyIsPanel(t *testing.T) {
+	for _, size := range [][2]int{{30, 8}, {100, 20}} {
+		for _, showLog := range []bool{false, true} {
+			m := testModel(fixtureS2(), size[0], size[1])
+			m.selected, m.showLog = "a1", showLog
+			c, _ := layout(m)
+			for row := range c.H {
+				for col := range c.W {
+					if !c.At(row, col).Panel {
+						t.Fatalf("%dx%d showLog=%v: cell %d,%d is not a panel cell", c.W, c.H, showLog, row, col)
+					}
+				}
+			}
+		}
+	}
+}

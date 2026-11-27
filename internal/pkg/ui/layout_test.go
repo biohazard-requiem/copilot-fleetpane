@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -984,6 +985,46 @@ func TestActivityScrolling(t *testing.T) {
 	}
 }
 
+// A long title does not take the place of the ▲ N mark on the top border: it
+// is cut short in front of it.
+func TestActivityScrollMarkWithALongTitle(t *testing.T) {
+	const name = "very-long-subagent-name-for-truncation-checks"
+	logSnap := func(records int) protocol.Snapshot {
+		s := makeRunningSnap(1)
+		s.Agents[0].Name = name
+		s.Log = nil
+		for i := range records {
+			s.Log = append(s.Log, protocol.LogEntry{
+				Seq: int64(i + 1), T: "2026-11-23T23:48:00Z", Actor: "a1", Name: name,
+				Kind: "tool", Tool: "view", Summary: fmt.Sprintf("f%02d.go", i+1), Status: "done",
+			})
+		}
+		return s
+	}
+	tests := []struct {
+		name    string
+		records int // the box shows 16 of them
+		want    string
+	}{
+		{"records above", 40, "┌─ activity · very-long-subagent-name-for-trun… ▲ 24 ─┐"},
+		{"nothing above", 16, "┌─ activity · very-long-subagent-name-for-truncation…─┐"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := testModel(logSnap(tt.records), 57, 45)
+			m.selected = "a1"
+			c, hits := layout(m)
+			h, ok := findHit(hits, hitLogScroll, "")
+			if !ok || h.rect.Dy() != 18 {
+				t.Fatalf("activity box rect = %v (ok=%v), want it 18 rows tall", h.rect, ok)
+			}
+			if got := strings.TrimSpace(plainLines(c)[h.rect.Min.Y]); got != tt.want {
+				t.Errorf("top border = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestActivityToolNameWithoutSummary(t *testing.T) {
 	const (
 		plan = "exit_plan_mode"
@@ -1034,6 +1075,183 @@ func TestActivityToolNameWithoutSummary(t *testing.T) {
 				t.Errorf("record row = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// The records carry UTC times, and the pane shows them in the zone of the
+// model: the hour is another one, and in a half-hour zone the minute too.
+func TestActivityTimesInTheZoneOfTheModel(t *testing.T) {
+	record := protocol.LogEntry{Seq: 1, T: "2026-11-23T23:48:41Z", Actor: mainID, Name: mainID, Kind: "tool", Tool: "view", Status: "done"}
+	zones := []struct {
+		name        string
+		loc         *time.Location
+		full, short string // HH:MM:SS and MM:SS
+	}{
+		{"UTC", time.UTC, "23:48:41", "48:41"},
+		{"east of UTC, the next day", time.FixedZone("", 8*60*60), "07:48:41", "48:41"},
+		{"west of UTC", time.FixedZone("", -8*60*60), "15:48:41", "48:41"},
+		{"half-hour zone", time.FixedZone("", 5*60*60+30*60), "05:18:41", "18:41"},
+	}
+	pages := []struct {
+		name     string
+		w, h     int
+		selected string // not empty: the activity page of the compact layout
+		full     bool
+	}{
+		{"activity box", 57, 45, "", true},
+		{"narrow activity box", 40, 30, "", false},
+		{"compact layout, 100 wide", 100, 20, mainID, true},
+		{"compact layout", 30, 8, mainID, false},
+	}
+	for _, z := range zones {
+		for _, p := range pages {
+			t.Run(z.name+", "+p.name, func(t *testing.T) {
+				s := fixtureS0()
+				s.Log = []protocol.LogEntry{record}
+				m := testModel(s, p.w, p.h)
+				m.loc = z.loc
+				m.selected, m.showLog = p.selected, p.selected != ""
+				c, hits := layout(m)
+				h, ok := findHit(hits, hitLogScroll, "")
+				if !ok {
+					t.Fatal("missing hitLogScroll")
+				}
+				want := z.short + " "
+				if p.full {
+					want = z.full + " "
+				}
+				got := strings.Trim(plainLines(c)[h.rect.Min.Y+1], " "+LightBorder.Vertical)
+				if !strings.HasPrefix(got, want) {
+					t.Errorf("record row = %q, want it to start with %q", got, want)
+				}
+			})
+		}
+	}
+}
+
+// A new model shows the times in the local zone.
+func TestActivityTimesAreLocalByDefault(t *testing.T) {
+	local := time.Local
+	t.Cleanup(func() { time.Local = local })
+	time.Local = time.FixedZone("", 5*60*60+30*60)
+
+	m := New("", fixtureNow)
+	m.snap, m.connected, m.width, m.height = fixtureS0(), true, 57, 45
+	c, hits := layout(m)
+	h, ok := findHit(hits, hitLogScroll, "")
+	if !ok {
+		t.Fatal("missing hitLogScroll")
+	}
+	// The first record of fixtureS0 is of 23:48:32 UTC.
+	got := strings.Trim(plainLines(c)[h.rect.Min.Y+1], " "+LightBorder.Vertical)
+	if want := "05:18:32 main"; !strings.HasPrefix(got, want) {
+		t.Errorf("record row = %q, want it to start with %q", got, want)
+	}
+}
+
+// In a narrow pane the status bar takes a narrower form rather than be cut.
+func TestStatusBarNarrowForms(t *testing.T) {
+	tests := []struct {
+		w                     int // of the pane: the bar is two cells narrower
+		running, total, tools int
+		want                  string
+	}{
+		{57, 2, 4, 11, "main [working]  sub-agents [2/4]  tools [11]"},
+		{46, 2, 4, 11, "main [working]  sub-agents [2/4]  tools [11]"},
+		{45, 2, 4, 11, "main [working] sub-agents [2/4] tools [11]"},
+		{44, 2, 4, 11, "main [working] sub-agents [2/4] tools [11]"},
+		{43, 2, 4, 11, "main [working] agents [2/4] tools [11]"},
+		{40, 2, 4, 11, "main [working] agents [2/4] tools [11]"},
+		{49, 10, 60, 240, "main [working]  sub-agents [10/60]  tools [240]"},
+		{48, 10, 60, 240, "main [working] sub-agents [10/60] tools [240]"},
+		{46, 10, 60, 240, "main [working] agents [10/60] tools [240]"},
+		{43, 10, 60, 240, "main [working] agents [10/60] tools [240]"},
+		{42, 10, 60, 240, "main [working] [10/60] [240]"},
+		{40, 10, 60, 240, "main [working] [10/60] [240]"},
+		// Narrower than the vertical layout gets: the last counts go, whole.
+		{29, 10, 60, 240, "main [working] [10/60]"},
+		{23, 10, 60, 240, "main [working]"},
+	}
+	for _, tt := range tests {
+		m := testModel(fixtureS2(), tt.w, 2)
+		m.snap.Stats.TurnTools = tt.tools
+		c := NewCanvas(tt.w, 2)
+		drawStatusAndHints(c, 0, 0, tt.w, m, tt.running, tt.total, true)
+		if got := strings.TrimSpace(plainLines(c)[0]); got != tt.want {
+			t.Errorf("%d wide, [%d/%d] and [%d]: status bar = %q, want %q", tt.w, tt.running, tt.total, tt.tools, got, tt.want)
+		}
+	}
+
+	// The same in the layout: 11 tool calls do not read as 1.
+	c, _ := layout(testModel(fixtureS2(), 44, 45))
+	if got, want := strings.TrimSpace(plainLines(c)[43]), "main [working] sub-agents [2/4] tools [11]"; got != want {
+		t.Errorf("status bar of a pane 44 wide = %q, want %q", got, want)
+	}
+}
+
+// In a narrow pane the count line takes a narrower form rather than be cut.
+func TestCountLineNarrowForms(t *testing.T) {
+	// One sub-agent of each kind: running, waiting, done, failed, cancelled.
+	s := fixtureSW()
+	s.Agents = append(s.Agents, protocol.Agent{
+		ID: "a5", SpawnTurn: 3, ReportedTurn: 3, Name: "stopped", Type: "task", Status: "cancelled", DurationMs: 3000,
+	})
+	var (
+		full   = Spinner[0] + " 1 running  ! 1 waiting  ✓ 1 done  ✗ 1 failed  ⊘ 1 cancelled"
+		single = Spinner[0] + " 1 running ! 1 waiting ✓ 1 done ✗ 1 failed ⊘ 1 cancelled"
+		short  = Spinner[0] + "1 !1 ✓1 ✗1 ⊘1"
+	)
+	tests := []struct {
+		w    int
+		want string
+	}{
+		{62, full},
+		{61, full},
+		{60, single},
+		{57, single},
+		{56, short},
+		{40, short},
+	}
+	for _, tt := range tests {
+		c, _ := layout(testModel(s, tt.w, 45))
+		line := plainLines(c)[1]
+		if got := strings.TrimSpace(line); got != tt.want {
+			t.Errorf("%d wide: count line = %q, want %q", tt.w, got, tt.want)
+			continue
+		}
+		// Whatever the form, it is centered and its waiting mark is bold.
+		if got, want := colOf(line, tt.want), (tt.w-Width(tt.want))/2; got != want {
+			t.Errorf("%d wide: count line starts at column %d, want %d", tt.w, got, want)
+		}
+		checkMark(t, c, 1, colOf(line, IconWaiting))
+	}
+}
+
+// In a narrow pane the label of the delegate stem loses the word "running"
+// rather than be cut.
+func TestDelegateLabelNarrowForms(t *testing.T) {
+	tests := []struct {
+		w, n int // the width of the pane, the running sub-agents
+		want string
+	}{
+		{57, 2, "│ delegate · 2 running"},
+		{42, 2, "│ delegate · 2 running"},
+		{41, 2, "│ delegate · 2"},
+		{40, 2, "│ delegate · 2"},
+		{44, 12, "│ delegate · 12 running"},
+		{43, 12, "│ delegate · 12"},
+		{40, 12, "│ delegate · 12"},
+	}
+	for _, tt := range tests {
+		c, _ := layout(testModel(makeRunningSnap(tt.n), tt.w, 45))
+		if got := strings.TrimSpace(plainLines(c)[8]); got != tt.want {
+			t.Errorf("%d wide, %d running: row 8 = %q, want %q", tt.w, tt.n, got, tt.want)
+		}
+	}
+
+	// Nothing at all where even the short label has no room.
+	if got := delegateLabel(2, 12); got != "" {
+		t.Errorf("delegateLabel(2, 12) = %q, want nothing", got)
 	}
 }
 
@@ -1674,13 +1892,13 @@ func TestCancelledTool(t *testing.T) {
 		{
 			name: "activity row",
 			w:    60, h: 1,
-			draw: func(c *Canvas, frame int) { drawActivityRow(c, 0, 0, 60, true, record, frame) },
+			draw: func(c *Canvas, frame int) { drawActivityRow(c, 0, 0, 60, true, record, frame, time.UTC) },
 			want: []cell{{0, 22, IconCancelled, theme.RoleDim}, {0, 24, "b", theme.RoleTool}},
 		},
 		{
 			name: "row of the compact activity page",
 			w:    30, h: 1,
-			draw: func(c *Canvas, frame int) { drawCompactLogRow(c, 0, 0, 30, record, frame) },
+			draw: func(c *Canvas, frame int) { drawCompactLogRow(c, 0, 0, 30, record, frame, time.UTC) },
 			want: []cell{{0, 6, IconCancelled, theme.RoleDim}, {0, 8, "b", theme.RoleTool}},
 		},
 	}

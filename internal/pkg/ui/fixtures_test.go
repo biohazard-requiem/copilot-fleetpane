@@ -267,6 +267,8 @@ func fixtureSW() protocol.Snapshot {
 
 func testModel(snap protocol.Snapshot, w, h int) Model {
 	m := New("", fixtureNow)
+	// The tests expect the times as the fixtures have them, in UTC.
+	m.loc = time.UTC
 	m.snap = snap
 	m.connected = true
 	m.width = w

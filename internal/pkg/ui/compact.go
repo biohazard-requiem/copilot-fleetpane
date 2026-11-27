@@ -59,6 +59,10 @@ func layoutCompactList(c *Canvas, m Model, running []protocol.Agent, runningByID
 		items = append(items, compactItem{id: a.ID, agent: a})
 	}
 
+	// The rows have no box to be on: they are one panel themselves, so that
+	// no text lies on the bare background.
+	c.MarkPanel(0, 0, W, visRows)
+
 	hits := make([]hit, 0, 1+visRows)
 	if visRows > 0 {
 		hits = append(hits, hit{kind: hitListScroll, rect: image.Rect(0, 0, W, visRows)})
@@ -107,6 +111,9 @@ func layoutCompactLogPage(c *Canvas, m Model, runningByID map[string]protocol.Ag
 	pageRows := compactListVisRows(H)
 	visRows := compactLogVisRows(H)
 
+	// As in the list, the page is one panel.
+	c.MarkPanel(0, 0, W, pageRows)
+
 	var hits []hit
 	if pageRows > 0 {
 		hits = append(hits, hit{kind: hitLogScroll, rect: image.Rect(0, 0, W, pageRows)})
@@ -137,9 +144,9 @@ func layoutCompactLogPage(c *Canvas, m Model, runningByID map[string]protocol.Ag
 						rowW = drawCompactScrollMark(c, r, W, ArrowDown, below)
 					}
 					if full || m.selected == "" {
-						drawActivityRow(c, r, 0, rowW, full, entries[i], m.frame)
+						drawActivityRow(c, r, 0, rowW, full, entries[i], m.frame, m.location())
 					} else {
-						drawCompactLogRow(c, r, 0, rowW, entries[i], m.frame)
+						drawCompactLogRow(c, r, 0, rowW, entries[i], m.frame, m.location())
 					}
 				}
 			}
@@ -274,14 +281,15 @@ func drawCompactAgentListRow(c *Canvas, row, rowW int, a protocol.Agent, parentN
 
 // drawCompactLogRow draws one single-actor log line in narrow compact log mode:
 // "MM:SS <icon> <tool> <summary>", omitting the actor name already shown on row 0.
-func drawCompactLogRow(c *Canvas, row, col, width int, e protocol.LogEntry, frame int) {
+// The time of the record is shown in loc.
+func drawCompactLogRow(c *Canvas, row, col, width int, e protocol.LogEntry, frame int, loc *time.Location) {
 	if width <= 0 {
 		return
 	}
 	const timeW = 5
 	ts := ""
 	if t, ok := parseTime(e.T); ok {
-		ts = t.Format("04:05")
+		ts = t.In(loc).Format("04:05")
 	}
 	putClipped(c, row, col, min(timeW, width), ts, Style{FG: theme.RoleDim.Color()})
 	cursor := timeW + 1

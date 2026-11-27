@@ -190,8 +190,8 @@ func layoutVerticalWorkflow(c *Canvas, m Model) []hit {
 
 	c.Put(7, cx, TeeDown, mainSt)
 	c.Put(8, cx, LightBorder.Vertical, stemSt)
-	delegateLabel := fmt.Sprintf(" delegate %s %d running", Separator, n)
-	putClipped(c, 8, cx+1, x0+W-(cx+1), delegateLabel, dimSt)
+	labelW := x0 + W - (cx + 1)
+	putClipped(c, 8, cx+1, labelW, delegateLabel(n, labelW), dimSt)
 
 	var backRow int
 	switch p.level {
@@ -221,6 +221,20 @@ func layoutVerticalWorkflow(c *Canvas, m Model) []hit {
 	hits = append(hits, drawActivity(c, actRow, x0+1, W-2, p.actH, m, runningByID))
 	drawStatusAndHints(c, H-2, x0, W, m, n, totalThisTurn, true)
 	return hits
+}
+
+// delegateLabel returns what the delegate stem of n running sub-agents says
+// in avail cells: "delegate · N running", only "delegate · N" when that does
+// not fit, and nothing when that does not fit either.
+func delegateLabel(n, avail int) string {
+	short := fmt.Sprintf(" delegate %s %d", Separator, n)
+	if full := short + " running"; Width(full) <= avail {
+		return full
+	}
+	if Width(short) <= avail {
+		return short
+	}
+	return ""
 }
 
 // drawVerticalSingleRow draws the fanout (2 rows), 1..3 boxes in a row, and

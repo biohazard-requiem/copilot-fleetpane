@@ -42,6 +42,7 @@ func readyModel(t *testing.T, themesDir string, snap protocol.Snapshot, w, h int
 	t.Helper()
 	m := New(themesDir, fixtureNow)
 	m.clock = func() time.Time { return fixtureNow.Add(time.Second) }
+	m.loc = time.UTC
 	m.now = fixtureNow
 	m = send(t, m, tea.WindowSizeMsg{Width: w, Height: h})
 	m = send(t, m, SnapshotMsg{Snapshot: snap})

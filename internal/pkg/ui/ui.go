@@ -51,6 +51,7 @@ type Model struct {
 	now           time.Time
 	clock         func() time.Time                                     // injectable wall clock for inputGuard and clock ticks
 	tick          func(time.Duration, func(time.Time) tea.Msg) tea.Cmd // injectable timer (defaults to tea.Tick)
+	loc           *time.Location                                       // injectable time zone of the activity times (defaults to time.Local)
 	startedAt     time.Time
 	themeName     string
 	theme         *theme.Theme
@@ -73,6 +74,7 @@ func New(themesDir string, now time.Time) Model {
 		logFollow: true,
 		now:       now,
 		clock:     time.Now,
+		loc:       time.Local,
 		startedAt: now,
 		themeName: "gta6",
 		theme:     defaultTheme,
@@ -86,6 +88,15 @@ func (m Model) currentClock() time.Time {
 		return m.clock()
 	}
 	return time.Now()
+}
+
+// location returns the time zone the activity times are shown in: the
+// records carry UTC times, which mean little to a user elsewhere.
+func (m Model) location() *time.Location {
+	if m.loc != nil {
+		return m.loc
+	}
+	return time.Local
 }
 
 func (m Model) activeTheme() *theme.Theme {

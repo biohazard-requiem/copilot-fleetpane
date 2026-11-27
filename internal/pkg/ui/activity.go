@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"time"
 
 	"github.com/biohazard-requiem/copilot-fleetpane/internal/pkg/protocol"
 	"github.com/biohazard-requiem/copilot-fleetpane/internal/pkg/theme"
@@ -17,26 +18,20 @@ func drawActivity(c *Canvas, row, col, boxW, boxH int, m Model, runningByID map[
 	c.Box(row, col, boxW, boxH, Style{FG: theme.RoleEdge.Color()}, false)
 	h := hit{kind: hitLogScroll, rect: image.Rect(col, row, col+boxW, row+boxH)}
 
-	title := activityTitle(m, runningByID)
-	titleLabel := " " + title + " "
-	titleEnd := col + 2
-	if boxW > 4 {
-		tw := putClipped(c, row, col+2, boxW-4, Truncate(titleLabel, boxW-4), Style{FG: theme.RoleDim.Color()})
-		titleEnd = col + 2 + tw
-	}
-
 	entries := filterLog(m.snap.Log, m.selected)
 	visRows := max(0, boxH-2)
-	if len(entries) == 0 || visRows == 0 {
-		return h
+	var startIdx, endIdx, above, below int
+	if len(entries) > 0 && visRows > 0 {
+		startIdx = activityStartIndex(entries, visRows, m.logFollow, m.logTop)
+		endIdx = min(len(entries), startIdx+visRows)
+		above = startIdx
+		below = len(entries) - endIdx
 	}
 
-	startIdx := activityStartIndex(entries, visRows, m.logFollow, m.logTop)
-	endIdx := min(len(entries), startIdx+visRows)
-	above := startIdx
-	below := len(entries) - endIdx
-
-	drawScrollMark(c, row, col, boxW, titleEnd, ArrowUp, above)
+	// The ▲ N mark comes first: a long title would leave it no room, so the
+	// title has what the mark leaves of the top border.
+	titleW := boxW - 4 - drawScrollMark(c, row, col, boxW, col+2, ArrowUp, above)
+	putClipped(c, row, col+2, titleW, Truncate(" "+activityTitle(m, runningByID)+" ", titleW), Style{FG: theme.RoleDim.Color()})
 	drawScrollMark(c, row+boxH-1, col, boxW, col+2, ArrowDown, below)
 
 	innerCol := col + 2
@@ -45,7 +40,7 @@ func drawActivity(c *Canvas, row, col, boxW, boxH int, m Model, runningByID map[
 		return h
 	}
 	for i := startIdx; i < endIdx; i++ {
-		drawActivityRow(c, row+1+(i-startIdx), innerCol, innerW, innerW >= activityFullTimeMinW, entries[i], m.frame)
+		drawActivityRow(c, row+1+(i-startIdx), innerCol, innerW, innerW >= activityFullTimeMinW, entries[i], m.frame, m.location())
 	}
 	return h
 }
@@ -103,8 +98,9 @@ func activityStartIndex(entries []protocol.LogEntry, visRows int, follow bool, l
 }
 
 // drawActivityRow draws one record in innerW cells. full selects the columns:
-// the caller decides it once, so that every row of a page has the same.
-func drawActivityRow(c *Canvas, row, col, innerW int, full bool, e protocol.LogEntry, frame int) {
+// the caller decides it once, so that every row of a page has the same. The
+// time of the record is shown in loc.
+func drawActivityRow(c *Canvas, row, col, innerW int, full bool, e protocol.LogEntry, frame int, loc *time.Location) {
 	timeW := 5
 	nameW := 10
 	timeFmt := "04:05"
@@ -116,7 +112,7 @@ func drawActivityRow(c *Canvas, row, col, innerW int, full bool, e protocol.LogE
 
 	ts := ""
 	if t, ok := parseTime(e.T); ok {
-		ts = t.Format(timeFmt)
+		ts = t.In(loc).Format(timeFmt)
 	}
 	putClipped(c, row, col, min(timeW, innerW), ts, Style{FG: theme.RoleDim.Color()})
 	cursor := timeW + 1

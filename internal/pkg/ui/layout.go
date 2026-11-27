@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -371,7 +372,8 @@ func partsWidth(parts []styledPart) int {
 }
 
 // drawCountLine draws the per-turn sub-agent counts (or "no sub-agents this
-// turn" when empty) within [col, col+w).
+// turn" when empty) within [col, col+w). Counts too wide for w move closer
+// together and then lose their words: none of them is ever cut.
 func drawCountLine(c *Canvas, row, col, w int, running, reported []protocol.Agent, frame int, centered bool) {
 	if len(running)+len(reported) == 0 {
 		msg := Truncate("no sub-agents this turn", w)
@@ -409,27 +411,46 @@ func drawCountLine(c *Canvas, row, col, w int, running, reported []protocol.Agen
 	}
 
 	dim := Style{FG: theme.RoleDim.Color()}
-	parts := []styledPart{
-		{runIcon, Style{FG: theme.RoleRun.Color()}},
-		{fmt.Sprintf(" %d running  ", runN), dim},
-	}
-	if waitN > 0 {
+	// build returns the line with its counts gap apart, each with or without
+	// the word that says what it counts.
+	build := func(gap string, words bool) []styledPart {
+		count := func(n int, word string) string {
+			if words {
+				return fmt.Sprintf(" %d %s", n, word)
+			}
+			return strconv.Itoa(n)
+		}
+		parts := []styledPart{
+			{runIcon, Style{FG: theme.RoleRun.Color()}},
+			{count(runN, "running") + gap, dim},
+		}
+		if waitN > 0 {
+			parts = append(parts,
+				styledPart{IconWaiting, iconStyle(IconWaiting, theme.RoleRun)},
+				styledPart{count(waitN, "waiting") + gap, Style{FG: theme.RoleFG.Color(), Bold: true}},
+			)
+		}
 		parts = append(parts,
-			styledPart{IconWaiting, iconStyle(IconWaiting, theme.RoleRun)},
-			styledPart{fmt.Sprintf(" %d waiting  ", waitN), Style{FG: theme.RoleFG.Color(), Bold: true}},
+			styledPart{IconOK, Style{FG: theme.RoleOK.Color()}},
+			styledPart{count(doneN, "done") + gap, dim},
+			styledPart{IconFail, Style{FG: theme.RoleFail.Color()}},
+			styledPart{count(failN, "failed"), dim},
 		)
+		if cancelN > 0 {
+			parts = append(parts,
+				styledPart{gap + IconCancelled, dim},
+				styledPart{count(cancelN, "cancelled"), dim},
+			)
+		}
+		return parts
 	}
-	parts = append(parts,
-		styledPart{IconOK, Style{FG: theme.RoleOK.Color()}},
-		styledPart{fmt.Sprintf(" %d done  ", doneN), dim},
-		styledPart{IconFail, Style{FG: theme.RoleFail.Color()}},
-		styledPart{fmt.Sprintf(" %d failed", failN), dim},
-	)
-	if cancelN > 0 {
-		parts = append(parts,
-			styledPart{"  " + IconCancelled, dim},
-			styledPart{fmt.Sprintf(" %d cancelled", cancelN), dim},
-		)
+
+	parts := build("  ", true)
+	if partsWidth(parts) > w {
+		parts = build(" ", true)
+	}
+	if partsWidth(parts) > w {
+		parts = build(" ", false)
 	}
 
 	totalW := partsWidth(parts)
@@ -440,18 +461,21 @@ func drawCountLine(c *Canvas, row, col, w int, running, reported []protocol.Agen
 	putParts(c, row, startCol, w, parts)
 }
 
-// drawScrollMark draws " ▲ N " or " ▼ N " near the right end of a box border.
-func drawScrollMark(c *Canvas, row, boxCol, boxW, minCol int, arrow string, count int) {
+// drawScrollMark draws " ▲ N " or " ▼ N " near the right end of a box border
+// and returns the number of cells it took of it: none when there is no mark
+// to draw or no room for it right of minCol.
+func drawScrollMark(c *Canvas, row, boxCol, boxW, minCol int, arrow string, count int) int {
 	if count <= 0 {
-		return
+		return 0
 	}
 	label := fmt.Sprintf(" %s %d ", arrow, count)
 	lw := Width(label)
 	startCol := boxCol + boxW - 2 - lw
 	if startCol < minCol {
-		return
+		return 0
 	}
 	c.Put(row, startCol, label, Style{FG: theme.RoleFG.Color(), Bold: true})
+	return lw
 }
 
 func keyHintsText() string {
@@ -460,23 +484,36 @@ func keyHintsText() string {
 
 // drawStatusAndHints draws the status bar and key hints on either two rows
 // (when twoRows is true or single-row width is tight) or one row with hints
-// right-aligned. Affected rows are marked as Panel cells.
+// right-aligned. Affected rows are marked as Panel cells. A status bar too
+// wide for w takes the first of its narrower forms that fits: its counts are
+// never cut.
 func drawStatusAndHints(c *Canvas, row, col, w int, m Model, runningCount, totalThisTurn int, twoRows bool) {
 	status := mainStatus(m.snap.Main)
 	_, stRole := statusIcon(status, m.frame)
 	stStyle := Style{FG: stRole.Color(), Bold: status != "idle"}
 	dim := Style{FG: theme.RoleDim.Color()}
 
-	parts := []styledPart{
-		{"main ", dim},
-		{"[" + status + "]", stStyle},
-		{"  sub-agents ", dim},
-		{fmt.Sprintf("[%d/%d]", runningCount, totalThisTurn), Style{FG: theme.RoleAgent.Color()}},
-		{"  tools ", dim},
-		{fmt.Sprintf("[%d]", m.snap.Stats.TurnTools), Style{FG: theme.RoleTool.Color()}},
+	availW := max(0, w-2)
+	agents := styledPart{fmt.Sprintf("[%d/%d]", runningCount, totalThisTurn), Style{FG: theme.RoleAgent.Color()}}
+	tools := styledPart{fmt.Sprintf("[%d]", m.snap.Stats.TurnTools), Style{FG: theme.RoleTool.Color()}}
+	// What follows "main [status]", from the full form to the narrowest: the
+	// counts closer together, "agents" for "sub-agents", no labels, no count
+	// of the tools. Where none of these fits, nothing follows.
+	forms := [][]styledPart{
+		{{"  sub-agents ", dim}, agents, {"  tools ", dim}, tools},
+		{{" sub-agents ", dim}, agents, {" tools ", dim}, tools},
+		{{" agents ", dim}, agents, {" tools ", dim}, tools},
+		{{" ", dim}, agents, {" ", dim}, tools},
+		{{" ", dim}, agents},
+	}
+	parts := []styledPart{{"main ", dim}, {"[" + status + "]", stStyle}}
+	for _, form := range forms {
+		if partsWidth(parts)+partsWidth(form) <= availW {
+			parts = append(parts, form...)
+			break
+		}
 	}
 	hints := keyHintsText()
-	availW := max(0, w-2)
 	errSt := Style{FG: theme.RoleFail.Color()}
 
 	if twoRows {

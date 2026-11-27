@@ -12,7 +12,7 @@ type Cell struct {
 	FG    theme.Color // the color of a role, or a concrete color
 	Bold  bool
 	Faint bool
-	Panel bool // inside a box or on a status row: the background is tinted with the theme's glass
+	Panel bool // inside a box, on a status row or on a compact page: the background is tinted with the theme's glass
 	Cont  bool // the second cell of a wide character
 }
 
@@ -90,8 +90,8 @@ func (c *Canvas) set(i int, g string, w int, st Style) {
 }
 
 // MarkPanel marks the cells of the rectangle of w × h cells at row, col as
-// panel cells: boxes do it themselves, the status and key hint rows need it
-// too. The part off the canvas is ignored.
+// panel cells: boxes do it themselves, the status and key hint rows and the
+// pages of the compact layout need it too. The part off the canvas is ignored.
 func (c *Canvas) MarkPanel(row, col, w, h int) {
 	for r := max(row, 0); r < min(row+h, c.H); r++ {
 		for i := max(col, 0); i < min(col+w, c.W); i++ {

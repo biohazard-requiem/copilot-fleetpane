@@ -4,9 +4,9 @@
 
 FleetPane 是 GitHub Copilot CLI 的终端活动面板。在 Ghostty 里照常运行 `copilot`，提交第一条提示词后，当前标签页自动分出一个窗格，实时显示主 agent、它的子 agent（比如 `/fleet` 启动的那些）、各自的工具调用和一份活动流水。
 
-![FleetPane：主 agent、两个运行中的子 agent、back to main 节点和活动流水](docs/screenshot.png)
+![一个 Ghostty 窗口：左边是正在用 /fleet 运行三个子 agent 的 Copilot CLI，右边是 FleetPane，显示主 agent、两个运行中的子 agent、一个已回报的子 agent 和活动流水](docs/screenshot.png)
 
-设计效果图，不是实际截图
+Ghostty 里的 Copilot CLI（左）和 FleetPane（右），正在执行一次 `/fleet`。默认主题 `gta6`。
 
 ## 它做什么、不做什么
 
@@ -38,7 +38,7 @@ FleetPane 是 GitHub Copilot CLI 的终端活动面板。在 Ghostty 里照常�
 
 CLI 会自动更新，FleetPane 不锁定 CLI 的版本；它的行为是对着上面这两个版本核对的。扩展跑在 CLI 自带的 Node 运行时上，所以只有做开发才需要另装 Node.js。
 
-没有 CI，也没有公开发布的版本：从源码构建，或者用 `make dist` 做一个安装包，拷到要安装的机器上。
+没有公开发布的版本：从源码构建，或者用 `make dist` 做一个安装包，拷到要安装的机器上。
 
 ## 安装
 
@@ -66,7 +66,7 @@ make install
 
 ### 用安装包安装
 
-`make dist` 生成 `dist/fleetpane-<版本>-darwin-arm64.tar.gz`，例如 `make dist VERSION=0.1.0`；不带 `VERSION` 时版本是 `dev`。包里是首次 `make install` 放进去的那些文件，外加许可证，都在一个顶层目录 `fleetpane/` 下。安装的机器上不需要 Go，也不需要这个仓库：
+`make dist` 生成 `dist/fleetpane-<版本>-darwin-arm64.tar.gz`，例如 `make dist VERSION=0.1.0`；不带 `VERSION` 时版本是 `dev`。包里是首次 `make install` 放进去的那些文件，外加本项目的许可证，以及二进制里链接的第三方代码的许可证（在 `licenses/` 下），都在一个顶层目录 `fleetpane/` 下。安装的机器上不需要 Go，也不需要这个仓库：
 
 ```sh
 mkdir -p ~/.copilot/extensions
@@ -242,7 +242,7 @@ Usage: /fleetpane on|off|hide|show|layout <right|left|top|bottom> [10-80]|theme 
 | 所有字段都可选 | 没写的颜色取 `auto` 主题里对应的值，并和 `auto` 一样随终端的深浅换色。文件里写了的颜色原样使用 |
 | 没有 `background` | 不画底色，和 `auto` 一样跟随终端。这时 `glass` 和 `decor` 不起作用 |
 | `background.stops` | 一个或多个 `#rrggbb` 颜色，从上到下。有底色时所有颜色都应写成 `#rrggbb`，否则可读性没有保证 |
-| `glass` | 方框、活动流水的框和状态栏后面的那层混色：一个颜色和一个 0 到 1 的 `alpha`。有底色而没写 `glass` 时是 `#000000`、0.5 |
+| `glass` | 方框、活动流水的框、状态栏和紧凑布局的页面后面的那层混色：一个颜色和一个 0 到 1 的 `alpha`。有底色而没写 `glass` 时是 `#000000`、0.5 |
 | `decor` | `"none"`（默认）、`"palms"`，或 `{ "kind": "palms", "color": "#rrggbb", "alpha": 0.3 }`，`alpha` 为 0 到 1。没写的字段取 `gta6` 的值：`#190b38`、0.30 |
 | `title` | 一个颜色，或一个颜色数组（做成渐变）。默认用 `main` 的颜色 |
 | 文件 | 必须是普通文件（不能是符号链接），不超过 64 KiB |
@@ -255,12 +255,12 @@ Usage: /fleetpane on|off|hide|show|layout <right|left|top|bottom> [10-80]|theme 
 
 | 区域 | 内容 |
 | --- | --- |
-| 标题和计数 | `FLEETPANE`，然后是本轮子 agent 的计数：`◐ N running  ✓ N done  ✗ N failed`；有子 agent 在等你时多一段 `! N waiting`，有被取消的时多一段 `⊘ N cancelled`。没有子 agent 时写 `no sub-agents this turn` |
+| 标题和计数 | `FLEETPANE`，然后是本轮子 agent 的计数：`◐ N running  ✓ N done  ✗ N failed`；有子 agent 在等你时多一段 `! N waiting`，有被取消的时多一段 `⊘ N cancelled`。面板窄时计数不带文字：`◐N ✓N ✗N`。没有子 agent 时写 `no sub-agents this turn` |
 | `main` 方框 | 主 agent：`main · <模型>`、状态和耗时、当前或最近的工具 |
 | 运行区 | 此刻正在运行的子 agent，每个一个方框：名称和类型、模型（后台子 agent 加 `· bg`）、工具调用的轨迹、当前或最近的工具、状态和耗时。轨迹里每次已结束的调用是一个 `■`，颜色表示成功或失败，正在运行的那次是转圈图标 |
 | `back to main` | 本轮已经结束的子 agent，每个一行：状态、名称、类型、工具调用数、耗时。失败的下面再加一行错误信息。标题行右侧是 `已结束数/总数` |
-| `activity` | 活动流水，新的在下面：时间、发起者、状态、工具名和一句摘要。保留最近 200 条。选中某一项时只显示它的记录 |
-| 状态栏 | `main [状态]  sub-agents [运行中/本轮总数]  tools [本轮工具调用数]`，以及按键提示 |
+| `activity` | 活动流水，新的在下面：本地时间、发起者、状态、工具名和一句摘要。保留最近 200 条。选中某一项时只显示它的记录 |
+| 状态栏 | `main [状态]  sub-agents [运行中/本轮总数]  tools [本轮工具调用数]`，以及按键提示。面板窄时 `sub-agents` 写成 `agents`，再窄就不写这两个标签 |
 
 - "本轮的子 agent"指正在运行的，加上本轮之内结束的。上一轮启动、现在还在跑的后台子 agent 也算在内。
 - 子 agent 一结束，它的方框就从运行区消失，结果列进 `back to main`。新的一轮开始时这个列表清空，插话不会清空它。更早的结果只留在 `activity` 里。
@@ -443,9 +443,10 @@ FLEETPANE_DEBUG=1 copilot
 
 显示：
 
-- Ghostty 会把没有焦点的窗格调暗（`unfocused-split-opacity`，默认 0.7），而面板通常没有焦点，所以颜色比效果图暗。想要原色，在 Ghostty 的配置里设 `unfocused-split-opacity = 1`；这是 Ghostty 的全局设置。
+- Ghostty 会把没有焦点的窗格调暗（`unfocused-split-opacity`，默认 0.7），而面板通常没有焦点，所以颜色比 `docs/design/` 里的效果图暗；顶部那张截图就是被 Ghostty 调暗之后的样子。想要原色，在 Ghostty 的配置里设 `unfocused-split-opacity = 1`；这是 Ghostty 的全局设置。
 - 环境里设了 `RUNEWIDTH_EASTASIAN=1` 时，面板用来画图的符号会被算成两格宽，布局会错位。不设时它们都是一格宽，中日韩的区域设置下也一样。
 - `auto` 主题用的是终端的 ANSI 颜色。某个颜色在你的终端主题下看不清时，换用自定义主题。
+- `auto` 主题的次要文字（类型、时间、标签、状态栏、按键提示）用的是终端的"变淡"属性。面板没有焦点时 Ghostty 还会再调暗一次，在浅色的终端主题下这些文字会很淡。可以在 Ghostty 里设 `unfocused-split-opacity = 1`，或者换用自定义主题。
 
 鼠标：
 
@@ -508,7 +509,7 @@ fleetpane --socket <path> [--themes <dir>] [--close-pane <script>]
 | `test/e2e/` | 在 Ghostty 里对着真实 CLI 做测试用的驱动。不安装 |
 | `docs/design/` | 设计效果图 |
 
-没有 CI，也没有公开发布的版本。`test/e2e` 里的工具会给自己的测试窗口截图，这需要给终端应用开"屏幕录制"授权（系统设置 → 隐私与安全性 → 录屏与系统录音，旧版本的 macOS 里叫"屏幕录制"）。换一台机器或换一个终端应用，都要重新授权。
+CI（GitHub Actions，`.github/workflows/ci.yml`）在每次推送到 `main` 和每个 pull request 时，在 macOS 上运行 `make test`、`make vet` 和 `make dist`。没有公开发布的版本。`test/e2e` 里的工具会给自己的测试窗口截图，这需要给终端应用开"屏幕录制"授权（系统设置 → 隐私与安全性 → 录屏与系统录音，旧版本的 macOS 里叫"屏幕录制"）。换一台机器或换一个终端应用，都要重新授权。
 
 ## 许可证
 

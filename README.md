@@ -4,9 +4,9 @@ English | [简体中文](README_zh.md)
 
 FleetPane is a terminal activity pane for GitHub Copilot CLI. Run `copilot` in Ghostty as usual: when you submit the first prompt, the current tab splits and a pane shows the main agent, its sub-agents (for example those started by `/fleet`), their tool calls and an activity log, live.
 
-![FleetPane: the main agent, two running sub-agents, the back to main node and the activity log](docs/screenshot.png)
+![A Ghostty window: Copilot CLI on the left running /fleet with three sub-agents, FleetPane on the right showing the main agent, two running sub-agents, one that has reported back and the activity log](docs/screenshot.png)
 
-Design mockup, not a screenshot
+Copilot CLI (left) and FleetPane (right) in Ghostty, during a `/fleet` run. Default theme `gta6`.
 
 ## What it does and does not do
 
@@ -38,7 +38,7 @@ What it does not do:
 
 The CLI updates itself and FleetPane is not pinned to a CLI version; its behaviour was checked against the versions above. The extension runs on the Node runtime bundled with the CLI, so Node.js is needed only for development.
 
-There is no CI and no published release: build from source, or build an install package with `make dist` and copy it to the machines that need it.
+There is no published release: build from source, or build an install package with `make dist` and copy it to the machines that need it.
 
 ## Install
 
@@ -66,7 +66,7 @@ Run it again to upgrade, then start a new Copilot session. `config.json` and fil
 
 ### From a package
 
-`make dist` builds `dist/fleetpane-<version>-darwin-arm64.tar.gz`: for example `make dist VERSION=0.1.0`; without `VERSION` the version is `dev`. The package holds what a first `make install` puts in place, plus the licence, in one top-level directory `fleetpane/`. The machine it is installed on needs neither Go nor the repository:
+`make dist` builds `dist/fleetpane-<version>-darwin-arm64.tar.gz`: for example `make dist VERSION=0.1.0`; without `VERSION` the version is `dev`. The package holds what a first `make install` puts in place, plus this project's licence and, under `licenses/`, the licences of the third-party code linked into the binary, in one top-level directory `fleetpane/`. The machine it is installed on needs neither Go nor the repository:
 
 ```sh
 mkdir -p ~/.copilot/extensions
@@ -242,7 +242,7 @@ A colour is written as `"#rrggbb"`, `"ansi:N"` (N from 0 to 15, from the termina
 | Every field is optional | A colour that is missing takes the value of the `auto` theme and, like `auto`, changes with a dark or light terminal. Colours written in the file are used as they are |
 | No `background` | No background is painted and the theme follows the terminal, like `auto`. `glass` and `decor` then have no effect |
 | `background.stops` | One or more `#rrggbb` colours, top to bottom. With a background, write every colour as `#rrggbb`; otherwise readability is not guaranteed |
-| `glass` | The tint behind boxes, the activity frame and the status bar: a colour and an `alpha` from 0 to 1. With a background and no `glass`: `#000000`, 0.5 |
+| `glass` | The tint behind boxes, the activity frame, the status bar and the pages of the compact layout: a colour and an `alpha` from 0 to 1. With a background and no `glass`: `#000000`, 0.5 |
 | `decor` | `"none"` (the default), `"palms"`, or `{ "kind": "palms", "color": "#rrggbb", "alpha": 0.3 }` with `alpha` from 0 to 1. Fields left out take the values of `gta6`: `#190b38`, 0.30 |
 | `title` | One colour, or an array of colours for a gradient. The default is the `main` colour |
 | File | A regular file (not a symbolic link) of at most 64 KiB |
@@ -255,12 +255,12 @@ The extension checks only the form of a theme name, not whether the theme exists
 
 | Area | Content |
 | --- | --- |
-| Title and counts | `FLEETPANE`, then the counts for this turn's sub-agents: `◐ N running  ✓ N done  ✗ N failed`, with `! N waiting` when some wait for you and `⊘ N cancelled` when some were cancelled. Without sub-agents: `no sub-agents this turn` |
+| Title and counts | `FLEETPANE`, then the counts for this turn's sub-agents: `◐ N running  ✓ N done  ✗ N failed`, with `! N waiting` when some wait for you and `⊘ N cancelled` when some were cancelled. In a narrow pane the counts lose their words: `◐N ✓N ✗N`. Without sub-agents: `no sub-agents this turn` |
 | `main` box | The main agent: `main · <model>`, its status and elapsed time, and the current or latest tool |
 | Running area | The sub-agents that are running right now, one box each: name and type, the model (with `· bg` for a background sub-agent), a trail of tool calls, the current or latest tool, status and elapsed time. In the trail each finished call is a `■`, coloured by success or failure, and the running call is a spinner |
 | `back to main` | The sub-agents that ended in this turn, one line each: status, name, type, number of tool calls, elapsed time. A failed one has a second line with the error. The header counts `ended/total` |
-| `activity` | The activity log, newest at the bottom: time, who, status, tool name and a short summary. It keeps the latest 200 records. With an item selected it shows only that item's records |
-| Status bar | `main [status]  sub-agents [running/total this turn]  tools [tool calls this turn]`, and the key hints |
+| `activity` | The activity log, newest at the bottom: local time, who, status, tool name and a short summary. It keeps the latest 200 records. With an item selected it shows only that item's records |
+| Status bar | `main [status]  sub-agents [running/total this turn]  tools [tool calls this turn]`, and the key hints. In a narrow pane `sub-agents` becomes `agents`, and then the labels are left out |
 
 - "This turn's sub-agents" are the ones running now plus the ones that ended during this turn. A background sub-agent started in an earlier turn and still running counts as well.
 - When a sub-agent ends, its box leaves the running area and its result is listed in `back to main`. That list is cleared when a new turn starts; a steering message does not clear it. Older results remain in `activity` only.
@@ -441,9 +441,10 @@ Opening and closing:
 
 Display:
 
-- Ghostty dims splits that do not have focus (`unfocused-split-opacity`, 0.7 by default), and the pane normally does not have focus. Its colours therefore look darker than in the mockups. For the original colours set `unfocused-split-opacity = 1` in Ghostty's configuration; this is a global Ghostty setting.
+- Ghostty dims splits that do not have focus (`unfocused-split-opacity`, 0.7 by default), and the pane normally does not have focus. Its colours therefore look darker than in the mockups under `docs/design/`; the screenshot at the top shows the pane as Ghostty dims it. For the original colours set `unfocused-split-opacity = 1` in Ghostty's configuration; this is a global Ghostty setting.
 - With `RUNEWIDTH_EASTASIAN=1` in the environment, the symbols the pane draws with count as two cells wide and the layout breaks. Without it they are one cell wide, also under a CJK locale.
 - The `auto` theme uses the terminal's ANSI colours. If one of them is hard to read with your terminal theme, use a custom theme.
+- The `auto` theme writes secondary text (types, times, labels, the status bar, the key hints) with the terminal's faint attribute. In a pane without focus Ghostty dims it once more, and on a light terminal theme that text becomes very pale. Setting `unfocused-split-opacity = 1` in Ghostty or using a custom theme helps.
 
 Mouse:
 
@@ -506,7 +507,7 @@ fleetpane --socket <path> [--themes <dir>] [--close-pane <script>]
 | `test/e2e/` | Drivers for tests against a real CLI in Ghostty. Not installed |
 | `docs/design/` | Design mockups |
 
-There is no CI and no published release. The tools in `test/e2e` take screenshots of their test window, which needs the Screen Recording permission for the terminal application (System Settings → Privacy & Security → Screen & System Audio Recording; Screen Recording on older versions of macOS). The permission has to be granted again on another machine or for another terminal application.
+CI (GitHub Actions, `.github/workflows/ci.yml`) runs `make test`, `make vet` and `make dist` on macOS for every push to `main` and every pull request. There is no published release. The tools in `test/e2e` take screenshots of their test window, which needs the Screen Recording permission for the terminal application (System Settings → Privacy & Security → Screen & System Audio Recording; Screen Recording on older versions of macOS). The permission has to be granted again on another machine or for another terminal application.
 
 ## License
 

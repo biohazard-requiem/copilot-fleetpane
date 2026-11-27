@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Apple Silicon, the only platform FleetPane is built for
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # the extension runs on the Node 24 runtime bundled with Copilot CLI
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: make test
+      - run: make vet
+      - run: make dist
+      - name: Check that the package holds the binary and the third-party licenses
+        # Go's own license, and at least one of a third-party module
+        run: tar -tzf dist/fleetpane-dev-darwin-arm64.tar.gz fleetpane/bin/fleetpane fleetpane/licenses/go/LICENSE 'fleetpane/licenses/*@v*/*'
